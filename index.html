@@ -3,54 +3,72 @@
 <head>
   <meta charset="UTF-8">
   <title>首都圏 渋滞情報 読み上げ</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    button { padding: 12px 20px; font-size: 18px; }
+    body { font-family: sans-serif; padding:20px; }
+    button { font-size:18px; padding:12px 20px; }
   </style>
 </head>
 <body>
-
-<h1>首都圏 渋滞情報 読み上げ</h1>
-<p>1分ごとに最新の渋滞/規制情報を自動で読み上げます。</p>
-
-<button id="startBtn">▶ 読み上げ開始</button>
+  <h1>首都圏 渋滞情報 読み上げ</h1>
+  <p>1分ごとに最新の渋滞/規制情報を自動で読み上げます。</p>
+  <button id="startBtn">▶ 読み上げ開始</button>
+  <button id="stopBtn" disabled>■ 停止</button>
+  <p id="status"></p>
 
 <script>
 const RSS_URL = "https://www.driveplaza.com/traffic/rss/0451.xml"; // 関東
+let timer = null;
+
+function speak(text) {
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "ja-JP";
+  speechSynthesis.speak(utter);
+}
 
 async function fetchTraffic() {
   try {
     const res = await fetch(RSS_URL);
-    const xmlText = await res.text();
-
-    const titles = [...xmlText.matchAll(/<title>(.*?)<\/title>/g)]
+    const xml = await res.text();
+    const titles = [...xml.matchAll(/<title>(.*?)<\/title>/g)]
       .map(m => m[1])
       .filter(t => !t.includes("NEXCO"))
       .filter(t => !t.includes("更新情報"));
-
     if (titles.length === 0) {
       return "現在、渋滞情報はありません。";
     }
-
-    return titles.slice(0, 5).join("。") + "。";
-
+    return titles.slice(0,5).join("。") + "。";
   } catch (e) {
     return "渋滞情報を取得できませんでした。";
   }
 }
 
-async function speakTraffic() {
-  const message = await fetchTraffic();
-  const utter = new SpeechSynthesisUtterance(message);
-  utter.lang = "ja-JP";
-  speechSynthesis.speak(utter);
-}
+document.getElementById("startBtn").onclick = async () => {
+  // ユーザー操作直後に音声発話（iOS対策）
+  speak("渋滞読み上げを開始します。");
 
-document.getElementById("startBtn").onclick = () => {
-  speakTraffic();
-  setInterval(speakTraffic, 60000);
+  document.getElementById("startBtn").disabled = true;
+  document.getElementById("stopBtn").disabled = false;
+  document.getElementById("status").textContent = "読み上げ中…";
+
+  // 即データ取得して読み上げ
+  const first = await fetchTraffic();
+  speak(first);
+
+  // 1分毎に読み上げ
+  timer = setInterval(async () => {
+    const data = await fetchTraffic();
+    speak(data);
+  }, 60000);
+};
+
+document.getElementById("stopBtn").onclick = () => {
+  clearInterval(timer);
+  speechSynthesis.cancel();
+  document.getElementById("status").textContent = "停止しました";
+  document.getElementById("startBtn").disabled = false;
+  document.getElementById("stopBtn").disabled = true;
 };
 </script>
-
 </body>
 </html>

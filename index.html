@@ -1,31 +1,37 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>首都圏 渋滞情報 読み上げ</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body { font-family: sans-serif; padding:20px; }
-    button { font-size:18px; padding:12px 20px; }
-  </style>
+<meta charset="UTF-8">
+<title>首都圏 渋滞情報 読み上げ</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font-family: sans-serif; padding:20px; }
+  button { font-size:18px; padding:12px 20px; margin-right:10px; }
+</style>
 </head>
 <body>
-  <h1>首都圏 渋滞情報 読み上げ</h1>
-  <p>1分ごとに最新の渋滞/規制情報を自動で読み上げます。</p>
-  <button id="startBtn">▶ 読み上げ開始</button>
-  <button id="stopBtn" disabled>■ 停止</button>
-  <p id="status"></p>
+<h1>首都圏 渋滞情報 読み上げ</h1>
+<p>1分ごとに最新の渋滞情報を読み上げます</p>
+
+<button id="startBtn">▶ 読み上げ開始</button>
+<button id="stopBtn" disabled>■ 停止</button>
+<p id="status"></p>
 
 <script>
-const RSS_URL = "https://www.driveplaza.com/traffic/rss/0451.xml"; // 関東
 let timer = null;
+let reading = false;
 
+// CORS プロキシ経由で RSS を取得
+const RSS_URL = "https://api.allorigins.win/raw?url=https://www.driveplaza.com/traffic/rss/0451.xml";
+
+// 音声再生関数
 function speak(text) {
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "ja-JP";
   speechSynthesis.speak(utter);
 }
 
+// 渋滞情報取得
 async function fetchTraffic() {
   try {
     const res = await fetch(RSS_URL);
@@ -34,40 +40,45 @@ async function fetchTraffic() {
       .map(m => m[1])
       .filter(t => !t.includes("NEXCO"))
       .filter(t => !t.includes("更新情報"));
-    if (titles.length === 0) {
-      return "現在、渋滞情報はありません。";
-    }
+    if (titles.length === 0) return "現在、渋滞情報はありません。";
     return titles.slice(0,5).join("。") + "。";
   } catch (e) {
     return "渋滞情報を取得できませんでした。";
   }
 }
 
+// 読み上げ開始
 document.getElementById("startBtn").onclick = async () => {
-  // ユーザー操作直後に音声発話（iOS対策）
-  speak("渋滞読み上げを開始します。");
+  if (reading) return;
+  reading = true;
 
   document.getElementById("startBtn").disabled = true;
   document.getElementById("stopBtn").disabled = false;
   document.getElementById("status").textContent = "読み上げ中…";
 
-  // 即データ取得して読み上げ
+  // iOS 対応：ユーザー操作直後に必ず発話
+  speak("渋滞読み上げを開始します。");
+
+  // 初回読み上げ
   const first = await fetchTraffic();
   speak(first);
 
-  // 1分毎に読み上げ
+  // 1分ごとに自動読み上げ
   timer = setInterval(async () => {
     const data = await fetchTraffic();
     speak(data);
   }, 60000);
 };
 
+// 停止
 document.getElementById("stopBtn").onclick = () => {
-  clearInterval(timer);
+  reading = false;
   speechSynthesis.cancel();
-  document.getElementById("status").textContent = "停止しました";
+  clearInterval(timer);
+
   document.getElementById("startBtn").disabled = false;
   document.getElementById("stopBtn").disabled = true;
+  document.getElementById("status").textContent = "停止しました";
 };
 </script>
 </body>

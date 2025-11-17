@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>首都圏 渋滞情報 読み上げ</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    button { padding: 12px 20px; font-size: 18px; }
+  </style>
+</head>
+<body>
+
+<h1>首都圏 渋滞情報 読み上げ</h1>
+<p>1分ごとに最新の渋滞/規制情報を自動で読み上げます。</p>
+
+<button id="startBtn">▶ 読み上げ開始</button>
+
+<script>
+const RSS_URL = "https://www.driveplaza.com/traffic/rss/0451.xml"; // 関東
+
+async function fetchTraffic() {
+  try {
+    const res = await fetch(RSS_URL);
+    const xmlText = await res.text();
+
+    const titles = [...xmlText.matchAll(/<title>(.*?)<\/title>/g)]
+      .map(m => m[1])
+      .filter(t => !t.includes("NEXCO"))
+      .filter(t => !t.includes("更新情報"));
+
+    if (titles.length === 0) {
+      return "現在、渋滞情報はありません。";
+    }
+
+    return titles.slice(0, 5).join("。") + "。";
+
+  } catch (e) {
+    return "渋滞情報を取得できませんでした。";
+  }
+}
+
+async function speakTraffic() {
+  const message = await fetchTraffic();
+  const utter = new SpeechSynthesisUtterance(message);
+  utter.lang = "ja-JP";
+  speechSynthesis.speak(utter);
+}
+
+document.getElementById("startBtn").onclick = () => {
+  speakTraffic();
+  setInterval(speakTraffic, 60000);
+};
+</script>
+
+</body>
+</html>

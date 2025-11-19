@@ -5,108 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>首都圏渋滞スピーカー</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
 <style>
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #f5f5f5;
-}
-#map {
-    height: 60vh;
-    width: 100%;
-}
-#panel {
-    background: white;
-    padding: 15px;
-    border-top: 1px solid #ccc;
-}
-button {
-    width: 100%;
-    padding: 14px;
-    font-size: 18px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-}
-#startBtn {
-    background: #007bff;
-    color: white;
-}
-#stopBtn {
-    background: #888;
-    color: white;
-    margin-top: 10px;
-}
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f5f5f5; }
+#map { height:60vh; width:100%; }
+#panel { background:white; padding:15px; border-top:1px solid #ccc; }
+button { width:100%; padding:14px; font-size:18px; border-radius:8px; border:none; cursor:pointer; }
+#startBtn { background:#007bff; color:white; }
+#stopBtn { background:#888; color:white; margin-top:10px; }
 </style>
 </head>
-
 <body>
 
 <div id="map"></div>
-
 <div id="panel">
-    <h2>首都圏 渋滞スピーカー</h2>
-    <p>5分ごとに自動で渋滞情報を読み上げます。</p>
-    <button id="startBtn">読み上げ開始</button>
-    <button id="stopBtn">停止</button>
+<h2>首都圏 渋滞スピーカー</h2>
+<p>5分ごとに自動で渋滞情報を読み上げます。</p>
+<button id="startBtn">読み上げ開始</button>
+<button id="stopBtn">停止</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-// ---- Leaflet 地図 ----------------------------------------
-const map = L.map('map').setView([35.68, 139.76], 10); // 東京付近
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18,
-}).addTo(map);
-
-// 渋滞用の赤線レイヤー
+const map = L.map('map').setView([35.68, 139.76], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ maxZoom:18 }).addTo(map);
 let trafficLayer = L.layerGroup().addTo(map);
-
-// ---- 読み上げ --------------------------------------------
 let intervalId = null;
 
-// JSONを読み込み → 読み上げ
-async function readTraffic() {
-    try {
-        const res = await fetch("jams.json?" + Date.now()); // キャッシュ回避
+// --- JSON 絶対パス（GitHub Pages のリポジトリに合わせる）
+const JAM_JSON_URL = "https://sakkky.github.io/trafficspeaker/jams.json?" + Date.now();
+
+async function readTraffic(){
+    try{
+        const res = await fetch(JAM_JSON_URL);
+        console.log("fetch status:", res.status);
         const data = await res.json();
+        console.log("data loaded:", data);
 
-        // 地図の渋滞描画をクリア
         trafficLayer.clearLayers();
-
         let text = "";
-
-        data.forEach(jam => {
-            text += `${jam.highway} は、${jam.detail}。`;
-
-            // 地図に赤線を描く
-            if (jam.coords && jam.coords.length > 1) {
-                L.polyline(jam.coords, {color: "red", weight: 6}).addTo(trafficLayer);
+        data.forEach(j => {
+            text += `${j.highway}は、${j.detail}。`;
+            if(j.coords && j.coords.length>1){
+                L.polyline(j.coords,{color:"red", weight:6}).addTo(trafficLayer);
             }
         });
 
-        if (text === "") text = "現在、登録されている渋滞情報はありません。";
-
+        if(text==="") text="現在、登録されている渋滞情報はありません。";
         const u = new SpeechSynthesisUtterance(text);
         u.rate = 1;
         speechSynthesis.speak(u);
 
-    } catch (e) {
-        const u = new SpeechSynthesisUtterance("渋滞情報の取得に失敗しました。");
-        speechSynthesis.speak(u);
+    }catch(e){
+        console.error("読み込み失敗:", e);
+        speechSynthesis.speak(new SpeechSynthesisUtterance("渋滞情報の取得に失敗しました。"));
     }
 }
 
-// ---- ボタン --------------------------------------------
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("startBtn").onclick = ()=>{
     readTraffic();
-    intervalId = setInterval(readTraffic, 300000); // 5分
+    intervalId = setInterval(readTraffic, 300000);
 };
 
-document.getElementById("stopBtn").onclick = () => {
+document.getElementById("stopBtn").onclick = ()=>{
     speechSynthesis.cancel();
     clearInterval(intervalId);
 };

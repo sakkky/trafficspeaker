@@ -2,115 +2,46 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>首都圏 渋滞マップ＋読み上げ</title>
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<title>首都圏リアルタイム渋滞マップ（音声案内つき）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { margin:0; font-family:sans-serif; }
-  #map { height:60vh; }
-  #controls { padding:10px; }
-  button { font-size:18px; padding:10px 15px; margin-right:10px; }
-  #status { margin-top:5px; }
+  #map { height: 70vh; }
+  #controls { padding: 12px; }
+  button { font-size:18px; padding:10px 15px; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div id="controls">
-  <button id="startBtn">▶ 読み上げ開始</button>
-  <button id="stopBtn" disabled>■ 停止</button>
-  <div id="status"></div>
+  <button id="readBtn">▶ 渋滞を読み上げ</button>
 </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-let timer = null;
-let reading = false;
+function initMap() {
+  const map = new google.maps.Map(document.getElementById("map"), {
+    center: { lat: 35.68, lng: 139.76 },
+    zoom: 12,
+  });
 
-// CORS対応 RSS
-const RSS_URL = "https://api.allorigins.win/raw?url=https://www.driveplaza.com/traffic/rss/0451.xml";
+  // ◆ 渋滞レイヤー（Google が自動更新）
+  const trafficLayer = new google.maps.TrafficLayer();
+  trafficLayer.setMap(map);
 
-// 簡易首都高マッピング（路線名→座標ライン）
-const ROUTES = {
-  "3号渋谷線": [[35.658,139.700],[35.660,139.720],[35.662,139.740]],
-  "湾岸線": [[35.620,139.780],[35.640,139.800],[35.660,139.820]],
-  "中央環状線": [[35.670,139.740],[35.680,139.760],[35.690,139.780]]
-};
-
-// 地図初期化
-const map = L.map('map').setView([35.66,139.75], 11);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution: '© OpenStreetMap contributors'
-}).addTo(map);
-
-// ライン保存用
-let routeLines = {};
-for(const r in ROUTES){
-  routeLines[r] = L.polyline(ROUTES[r], {color:'green', weight:6}).addTo(map);
+  document.getElementById("readBtn").onclick = () => {
+    const msg = new SpeechSynthesisUtterance(
+      "現在の渋滞状況は地図上にリアルタイムで表示されています。" +
+      "赤い線は渋滞、黄色は混雑を表します。安全運転でお出かけください。"
+    );
+    msg.lang = "ja-JP";
+    speechSynthesis.speak(msg);
+  };
 }
+</script>
 
-// 音声再生関数
-function speak(text){
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "ja-JP";
-  speechSynthesis.speak(utter);
-}
-
-// 渋滞情報取得
-async function fetchTraffic(){
-  try {
-    const res = await fetch(RSS_URL);
-    const xml = await res.text();
-    const titles = [...xml.matchAll(/<title>(.*?)<\/title>/g)]
-      .map(m=>m[1])
-      .filter(t=>!t.includes("NEXCO"))
-      .filter(t=>!t.includes("更新情報"));
-
-    if(titles.length===0) return "現在、渋滞情報はありません。";
-
-    // ライン色変更（簡易：タイトルに路線名が入っていれば赤）
-    for(const r in routeLines){
-      let color = titles.some(t=>t.includes(r)) ? 'red':'green';
-      routeLines[r].setStyle({color});
-    }
-
-    return titles.slice(0,5).join("。")+"。";
-  }catch(e){
-    return "渋滞情報を取得できませんでした。";
-  }
-}
-
-// 読み上げ開始
-document.getElementById("startBtn").onclick = async ()=>{
-  if(reading) return;
-  reading = true;
-  document.getElementById("startBtn").disabled = true;
-  document.getElementById("stopBtn").disabled = false;
-  document.getElementById("status").textContent = "読み上げ中…";
-
-  // iOS対応
-  speak("渋滞読み上げを開始します。");
-
-  // 初回読み上げ
-  const first = await fetchTraffic();
-  speak(first);
-
-  // 1分ごとに更新
-  timer = setInterval(async()=>{
-    const data = await fetchTraffic();
-    speak(data);
-  },60000);
-};
-
-// 停止
-document.getElementById("stopBtn").onclick = ()=>{
-  reading = false;
-  clearInterval(timer);
-  speechSynthesis.cancel();
-  document.getElementById("startBtn").disabled = false;
-  document.getElementById("stopBtn").disabled = true;
-  document.getElementById("status").textContent = "停止しました";
-};
+<script async
+  src="https://maps.googleapis.com/maps/api/js?callback=initMap">
 </script>
 
 </body>

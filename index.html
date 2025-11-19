@@ -3,99 +3,78 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>首都圏渋滞スピーカー</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<title>首都圏渋滞情報</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
-body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f5f5f5; }
-#map { height:60vh; width:100%; }
-#panel { background:white; padding:15px; border-top:1px solid #ccc; }
-button { width:100%; padding:14px; font-size:18px; border-radius:8px; border:none; cursor:pointer; }
-#startBtn { background:#007bff; color:white; }
-#stopBtn { background:#888; color:white; margin-top:10px; }
+  html, body { margin:0; padding:0; height:100%; }
+  #map { width:100%; height:70%; }
+  #controls { padding: 10px; text-align:center; }
+  button { font-size: 1.2em; margin:5px; padding:10px 20px; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
-
-<div id="panel">
-<h2>首都圏 渋滞スピーカー</h2>
-<p>「読み上げ開始」を押すと、渋滞情報を読み上げます。</p>
-<button id="startBtn">読み上げ開始</button>
-<button id="stopBtn">停止</button>
+<div id="controls">
+  <button id="start">読み上げ開始</button>
+  <button id="stop">停止</button>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-// iOS 対応のための“初回許可”フラグ
-let iosUnlocked = false;
+const API_URL = "https://weathered-snow-6ea6.sakky-tk.workers.dev/";
 
-// JSONファイルの URL（GitHub Pages）
-const JAM_JSON_URL = "https://sakkky.github.io/trafficspeaker/jams.json";
+let map = L.map('map').setView([35.6895, 139.6917], 9); // 東京中心
 
-// --- 地図セットアップ ---
-const map = L.map('map').setView([35.68, 139.76], 10);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:18 }).addTo(map);
-let trafficLayer = L.layerGroup().addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19
+}).addTo(map);
 
-let intervalId = null;
+let trafficLayers = [];
 
-// --- 渋滞情報取得＆読み上げ ---
-async function readTraffic(){
-    try{
-        const res = await fetch(JAM_JSON_URL + "?" + Date.now());
-        const data = await res.json();
+async function loadTraffic() {
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    
+    // 既存の渋滞レイヤーを削除
+    trafficLayers.forEach(layer => map.removeLayer(layer));
+    trafficLayers = [];
 
-        trafficLayer.clearLayers();
-        let text = "";
+    data.messages.forEach((msg, i) => {
+      if (!data[i]?.coords) return;
 
-        if(data.length === 0){
-            text = "現在、登録されている渋滞情報はありません。";
-        } else {
-            data.forEach(j => {
-                text += `${j.highway}は、${j.detail}。`;
+      const coords = data[i].coords.map(c => [c[0], c[1]]);
+      const poly = L.polyline(coords, {color:'red', weight:5}).addTo(map);
+      trafficLayers.push(poly);
+    });
 
-                if(j.coords && j.coords.length > 1){
-                    L.polyline(j.coords, { color:"red", weight:6 }).addTo(trafficLayer);
-                }
-            });
-        }
-
-        // 読み上げ
-        const ut = new SpeechSynthesisUtterance(text);
-        ut.rate = 1;
-        speechSynthesis.speak(ut);
-
-    } catch(err) {
-        speechSynthesis.speak(new SpeechSynthesisUtterance("渋滞情報の取得に失敗しました。"));
-        console.error(err);
-    }
+    return data;
+  } catch(e) {
+    console.error("渋滞情報取得エラー:", e);
+    return { messages: [] };
+  }
 }
 
-// --- ボタン操作 ---
-document.getElementById("startBtn").onclick = () => {
+let utterance;
+document.getElementById("start").addEventListener("click", async () => {
+  const data = await loadTraffic();
+  if (!data.messages.length) {
+    alert("現在渋滞情報はありません。");
+    return;
+  }
 
-    // ★ iPhone用初回解禁ダミー音声（最重要）
-    if(!iosUnlocked){
-        const dummy = new SpeechSynthesisUtterance("読み上げを開始します");
-        dummy.rate = 1;
-        speechSynthesis.speak(dummy);
-        iosUnlocked = true;
-    }
+  // ラジオ風文章を作成
+  const text = data.messages.map(m => m).join("。次は、");
+  utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ja-JP";
+  speechSynthesis.speak(utterance);
+});
 
-    // 最新データ読み上げ
-    readTraffic();
-
-    // 5分ごと
-    if(intervalId) clearInterval(intervalId);
-    intervalId = setInterval(readTraffic, 300000);
-};
-
-document.getElementById("stopBtn").onclick = () => {
-    speechSynthesis.cancel();
-    if(intervalId) clearInterval(intervalId);
-};
+document.getElementById("stop").addEventListener("click", () => {
+  speechSynthesis.cancel();
+});
 </script>
+
 </body>
 </html>

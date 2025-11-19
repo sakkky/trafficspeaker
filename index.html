@@ -2,47 +2,114 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>首都圏リアルタイム渋滞マップ（音声案内つき）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>首都圏渋滞スピーカー</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
 <style>
-  body { margin:0; font-family:sans-serif; }
-  #map { height: 70vh; }
-  #controls { padding: 12px; }
-  button { font-size:18px; padding:10px 15px; }
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f5;
+}
+#map {
+    height: 60vh;
+    width: 100%;
+}
+#panel {
+    background: white;
+    padding: 15px;
+    border-top: 1px solid #ccc;
+}
+button {
+    width: 100%;
+    padding: 14px;
+    font-size: 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+}
+#startBtn {
+    background: #007bff;
+    color: white;
+}
+#stopBtn {
+    background: #888;
+    color: white;
+    margin-top: 10px;
+}
 </style>
 </head>
+
 <body>
 
 <div id="map"></div>
-<div id="controls">
-  <button id="readBtn">▶ 渋滞を読み上げ</button>
+
+<div id="panel">
+    <h2>首都圏 渋滞スピーカー</h2>
+    <p>5分ごとに自動で渋滞情報を読み上げます。</p>
+    <button id="startBtn">読み上げ開始</button>
+    <button id="stopBtn">停止</button>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-function initMap() {
-  const map = new google.maps.Map(document.getElementById("map"), {
-    center: { lat: 35.68, lng: 139.76 },
-    zoom: 12,
-  });
+// ---- Leaflet 地図 ----------------------------------------
+const map = L.map('map').setView([35.68, 139.76], 10); // 東京付近
 
-  // ◆ 渋滞レイヤー（Google が自動更新）
-  const trafficLayer = new google.maps.TrafficLayer();
-  trafficLayer.setMap(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+}).addTo(map);
 
-  document.getElementById("readBtn").onclick = () => {
-    const msg = new SpeechSynthesisUtterance(
-      "現在の渋滞状況は地図上にリアルタイムで表示されています。" +
-      "赤い線は渋滞、黄色は混雑を表します。安全運転でお出かけください。"
-    );
-    msg.lang = "ja-JP";
-    speechSynthesis.speak(msg);
-  };
+// 渋滞用の赤線レイヤー
+let trafficLayer = L.layerGroup().addTo(map);
+
+// ---- 読み上げ --------------------------------------------
+let intervalId = null;
+
+// JSONを読み込み → 読み上げ
+async function readTraffic() {
+    try {
+        const res = await fetch("jams.json?" + Date.now()); // キャッシュ回避
+        const data = await res.json();
+
+        // 地図の渋滞描画をクリア
+        trafficLayer.clearLayers();
+
+        let text = "";
+
+        data.forEach(jam => {
+            text += `${jam.highway} は、${jam.detail}。`;
+
+            // 地図に赤線を描く
+            if (jam.coords && jam.coords.length > 1) {
+                L.polyline(jam.coords, {color: "red", weight: 6}).addTo(trafficLayer);
+            }
+        });
+
+        if (text === "") text = "現在、登録されている渋滞情報はありません。";
+
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1;
+        speechSynthesis.speak(u);
+
+    } catch (e) {
+        const u = new SpeechSynthesisUtterance("渋滞情報の取得に失敗しました。");
+        speechSynthesis.speak(u);
+    }
 }
-</script>
 
-<script async
-  src="https://maps.googleapis.com/maps/api/js?callback=initMap">
-</script>
+// ---- ボタン --------------------------------------------
+document.getElementById("startBtn").onclick = () => {
+    readTraffic();
+    intervalId = setInterval(readTraffic, 300000); // 5分
+};
 
+document.getElementById("stopBtn").onclick = () => {
+    speechSynthesis.cancel();
+    clearInterval(intervalId);
+};
+</script>
 </body>
 </html>
